@@ -1,0 +1,49 @@
+[project]
+name = "lead-enrichment-agent"
+version = "0.1.0"
+description = "Autonomous lead enrichment agent: crawls company domains and extracts structured intelligence with an LLM."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "playwright>=1.48",
+    "google-genai>=1.0",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "email-validator>=2.2",
+    "trafilatura>=1.12",
+    "beautifulsoup4>=4.12",
+    "markdownify>=0.13",
+    "httpx>=0.27",
+    "tenacity>=9.0",
+    "rich>=13.9",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.7",
+]
+
+[project.scripts]
+lead-agent = "lead_agent.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lead_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = ["live: tests that hit the real network (deselect with '-m \"not live\"')"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
