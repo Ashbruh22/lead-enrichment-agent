@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-12T15:21:58.775229",
+  "generated_at": "2026-09-12T16:12:15.814803",
   "model": "gemini-3.6-flash",
   "results": [
     {
@@ -7,12 +7,13 @@
       "url": "https://postman.com",
       "status": "ok",
       "intel": {
-        "company_overview": "Postman is an API platform that enables software engineers and enterprise organizations to develop, test, manage, and distribute APIs. The platform simplifies each step of the API lifecycle while providing contract-first governance, collaboration features, and security controls.",
-        "target_audience": "Individual developers, software engineering teams, and enterprise organizations building and managing APIs.",
+        "company_overview": "Postman is an API platform used for building, testing, managing, documenting, and distributing APIs and services. The platform streamlines collaboration across the API lifecycle while providing enterprise governance, security, and AI capabilities.",
+        "target_audience": "Engineers and enterprise development teams building, testing, and managing APIs.",
         "contact_points": {
           "emails": [
             "info@postman.com",
-            "info-jp@postman.com"
+            "info-jp@postman.com",
+            "help@postman.com"
           ],
           "contact_page_url": "https://postman.com/company/contact-us"
         },
@@ -25,13 +26,13 @@
           },
           {
             "name": "Ankit Sobti",
-            "role": "co-founder",
+            "role": "Co-founder",
             "linkedin_url": "https://www.linkedin.com/in/ankit-sobti",
             "source": "search"
           },
           {
             "name": "Abhijit Kane",
-            "role": "co-founder",
+            "role": "Co-founder",
             "linkedin_url": "https://in.linkedin.com/in/abhijitkane",
             "source": "search"
           }
@@ -60,15 +61,15 @@
           "note": "network never went idle; captured DOM as-is"
         },
         {
-          "url": "https://postman.com/product",
+          "url": "https://postman.com/company/contact-sales",
           "ok": true,
-          "chars": 2247,
+          "chars": 2685,
           "note": "network never went idle; captured DOM as-is"
         },
         {
-          "url": "https://postman.com/pricing",
+          "url": "https://postman.com/product",
           "ok": true,
-          "chars": 15027,
+          "chars": 2247,
           "note": "network never went idle; captured DOM as-is"
         }
       ],
@@ -78,21 +79,21 @@
         "pages_failed": 0,
         "agent_rounds": 1,
         "llm_calls": 2,
-        "prompt_tokens": 5509,
-        "completion_tokens": 349,
-        "total_tokens": 5858,
-        "estimated_cost_usd": 0.005441,
-        "duration_seconds": 27.53
+        "prompt_tokens": 3891,
+        "completion_tokens": 355,
+        "total_tokens": 4246,
+        "estimated_cost_usd": 0.004249,
+        "duration_seconds": 36.04
       },
-      "scraped_at": "2026-09-12T15:21:18.037788"
+      "scraped_at": "2026-09-12T16:11:00.914604"
     },
     {
       "domain": "supabase.com",
       "url": "https://supabase.com",
       "status": "ok",
       "intel": {
-        "company_overview": "Supabase provides an open source backend platform built around a Postgres database. Its suite of tools includes authentication, data APIs, edge functions, realtime data, storage, and vector embeddings.",
-        "target_audience": "Developers and engineering teams building web and mobile applications.",
+        "company_overview": "Supabase provides an open-source Postgres development platform that adds authentication, real-time data, storage, vector embeddings, and APIs to database infrastructure. It enables developers to start applications quickly and scale them to millions of users.",
+        "target_audience": "Developers and application engineering teams building modern web and mobile applications.",
         "contact_points": {
           "emails": [
             "legal@supabase.com",
@@ -123,8 +124,8 @@
             "source": "search"
           }
         ],
-        "data_confidence_score": 0.93,
-        "llm_self_score": 0.8,
+        "data_confidence_score": 0.948,
+        "llm_self_score": 0.85,
         "completeness_score": 1.0
       },
       "pages": [
@@ -147,49 +148,55 @@
           "note": null
         },
         {
+          "url": "https://supabase.com/pricing",
+          "ok": true,
+          "chars": 15193,
+          "note": "network never went idle; captured DOM as-is"
+        },
+        {
           "url": "https://supabase.com/contact/sales",
           "ok": true,
           "chars": 866,
           "note": null
         },
         {
-          "url": "https://supabase.com/pricing",
+          "url": "https://supabase.com/careers",
           "ok": true,
-          "chars": 15193,
+          "chars": 2364,
           "note": null
         }
       ],
       "errors": [],
       "metrics": {
-        "pages_fetched": 5,
+        "pages_fetched": 6,
         "pages_failed": 0,
         "agent_rounds": 1,
         "llm_calls": 2,
-        "prompt_tokens": 5320,
-        "completion_tokens": 331,
-        "total_tokens": 5651,
-        "estimated_cost_usd": 0.005231,
-        "duration_seconds": 22.64
+        "prompt_tokens": 5870,
+        "completion_tokens": 565,
+        "total_tokens": 6435,
+        "estimated_cost_usd": 0.006521,
+        "duration_seconds": 30.36
       },
-      "scraped_at": "2026-09-12T15:21:18.037788"
+      "scraped_at": "2026-09-12T16:11:00.915603"
     },
     {
       "domain": "vapi.ai",
       "url": "https://vapi.ai",
       "status": "ok",
       "intel": {
-        "company_overview": "Vapi provides a unified voice AI platform and real-time audio infrastructure for building, testing, and deploying enterprise-ready voice agents. Its technology handles orchestration, conversation flows, latency, and telephony integrations to support scalable automated phone and web interactions.",
-        "target_audience": "Developers and enterprise teams building, testing, and scaling voice AI applications.",
+        "company_overview": "Vapi provides a developer-first platform designed to build, test, and deploy real-time voice AI agents at scale. The platform handles underlying orchestration, telephony, and infrastructure so businesses can easily configure conversational flow, voice, and third-party integrations.",
+        "target_audience": "Developers and enterprise engineering teams building, scaling, and managing voice AI agents and inbound/outbound customer support interactions.",
         "contact_points": {
           "emails": [
-            "support@vapi.ai",
-            "talent@vapi.ai"
+            "talent@vapi.ai",
+            "support@vapi.ai"
           ],
           "contact_page_url": null
         },
         "leadership": [],
-        "data_confidence_score": 0.75,
-        "llm_self_score": 0.75,
+        "data_confidence_score": 0.785,
+        "llm_self_score": 0.85,
         "completeness_score": 0.75
       },
       "pages": [
@@ -206,12 +213,6 @@
           "note": "network never went idle; captured DOM as-is"
         },
         {
-          "url": "https://docs.vapi.ai/support",
-          "ok": true,
-          "chars": 3167,
-          "note": null
-        },
-        {
           "url": "https://vapi.ai/careers",
           "ok": true,
           "chars": 2010,
@@ -224,38 +225,44 @@
           "note": "network never went idle; captured DOM as-is"
         },
         {
-          "url": "https://vapi.ai/pricing",
+          "url": "https://vapi.ai/platform",
           "ok": true,
-          "chars": 2578,
+          "chars": 3220,
           "note": "network never went idle; captured DOM as-is"
+        },
+        {
+          "url": "https://docs.vapi.ai/support",
+          "ok": true,
+          "chars": 3167,
+          "note": null
         }
       ],
       "errors": [
-        "no unread pages left to fill: leadership"
+        "leadership not found; nothing left worth reading"
       ],
       "metrics": {
         "pages_fetched": 6,
         "pages_failed": 0,
         "agent_rounds": 1,
-        "llm_calls": 2,
-        "prompt_tokens": 4357,
-        "completion_tokens": 234,
-        "total_tokens": 4591,
-        "estimated_cost_usd": 0.004145,
-        "duration_seconds": 17.99
+        "llm_calls": 3,
+        "prompt_tokens": 4478,
+        "completion_tokens": 280,
+        "total_tokens": 4758,
+        "estimated_cost_usd": 0.004409,
+        "duration_seconds": 44.43
       },
-      "scraped_at": "2026-09-12T15:21:40.685237"
+      "scraped_at": "2026-09-12T16:11:31.277866"
     }
   ],
   "totals": {
-    "pages_fetched": 16,
+    "pages_fetched": 17,
     "pages_failed": 0,
     "agent_rounds": 3,
-    "llm_calls": 6,
-    "prompt_tokens": 15186,
-    "completion_tokens": 914,
-    "total_tokens": 16100,
-    "estimated_cost_usd": 0.014817,
-    "duration_seconds": 68.16
+    "llm_calls": 7,
+    "prompt_tokens": 14239,
+    "completion_tokens": 1200,
+    "total_tokens": 15439,
+    "estimated_cost_usd": 0.015179,
+    "duration_seconds": 110.83
   }
 }
