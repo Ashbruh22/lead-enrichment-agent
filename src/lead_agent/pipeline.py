@@ -4,7 +4,15 @@ The flow for one domain:
 
     homepage -> candidate links -> LLM picks pages -> fetch them ->
     clean + budget the text -> regex pass for contacts -> LLM extraction ->
-    validate against source -> fill missing LinkedIn URLs -> score
+    validate against source ->
+        assess what is missing -> if anything is, pick unread pages that would
+        fill it and go round again (bounded)
+    -> fill missing LinkedIn URLs -> score
+
+The loop is what makes this an agent rather than a pipeline: the second round
+is not planned in advance, it happens because the first round's *output* was
+short of something. Rounds, follow-up pages and total pages are all capped in
+:mod:`lead_agent.config`, so the loop always terminates.
 
 Every domain is wrapped in its own error boundary, and each result is written
 to disk the moment it is ready, so one site failing -- or the run being
@@ -27,6 +35,7 @@ from .browser import BrowserSession, FetchResult
 from .config import Settings
 from .discovery import extract_candidates, normalise
 from .extract import build_corpus, find_emails, find_linkedin_urls
+from .gaps import identify_gaps, summarise_gaps
 from .llm import GeminiClient, UsageTracker
 from .models import (
     CompanyIntel,
@@ -38,7 +47,7 @@ from .models import (
     RunReport,
     TeamMember,
 )
-from .navigator import select_pages
+from .navigator import select_followup_pages, select_pages
 from .prompts import EXTRACTION_SYSTEM, EXTRACTION_USER
 from .scoring import blended_confidence
 from .search import LinkedInFinder
@@ -130,11 +139,11 @@ def _build_intel(
                     name=name,
                     role=(person.role or None),
                     linkedin_url=url or None,
-                    source="website" if url else "unknown",
+                    source="website" if url else "not_searched",
                 )
             )
         except ValidationError:
-            members.append(TeamMember(name=name, role=(person.role or None), source="unknown"))
+            members.append(TeamMember(name=name, role=(person.role or None), source="not_searched"))
 
     # Validate each address on its own so one malformed string cannot discard
     # the whole contact list.
@@ -156,6 +165,61 @@ def _build_intel(
     )
 
 
+async def _extract_round(
+    client: GeminiClient,
+    domain: str,
+    good: list[FetchResult],
+    settings: Settings,
+    usage: UsageTracker,
+    say: Callable[[str], None],
+    round_number: int,
+) -> tuple[CompanyIntel | None, str]:
+    """One extraction pass over everything retrieved so far.
+
+    Re-extracting over the whole corpus each round, rather than extracting the
+    new pages alone and merging, costs one extra call on the domains that need
+    a second round. It buys correctness: the model sees a team page in the same
+    context as the homepage, so it can attribute titles and tell staff from
+    customers. Merging two independent extractions cannot do that, and a
+    follow-up round only happens when the first one came up short anyway.
+    """
+    corpus = build_corpus(
+        [(p.url, p.text) for p in good],
+        settings.max_chars_per_page,
+        settings.max_chars_total,
+    )
+    source_blob = "\n".join([p.html for p in good] + [p.text for p in good])
+    emails = find_emails(source_blob)
+    linkedins = find_linkedin_urls(source_blob)
+    contact_page = next((p.url for p in good if "contact" in p.url.lower()), None)
+
+    say("extracting with Gemini" if round_number == 1 else "re-extracting with new pages")
+    raw_intel = await client.structured(
+        prompt=EXTRACTION_USER.format(
+            domain=domain,
+            emails=", ".join(emails) or "none",
+            linkedins=", ".join(linkedins["profiles"]) or "none",
+            corpus=corpus,
+        ),
+        schema=LlmCompanyIntel,
+        system=EXTRACTION_SYSTEM.format(domain=domain),
+        usage=usage,
+    )
+    if raw_intel is None:
+        return None, source_blob
+
+    return (
+        _build_intel(
+            raw_intel,
+            source_blob=source_blob,
+            known_emails=emails,
+            known_linkedins=linkedins["profiles"],
+            contact_page=contact_page,
+        ),
+        source_blob,
+    )
+
+
 async def enrich_domain(
     session: BrowserSession,
     client: GeminiClient | None,
@@ -163,12 +227,14 @@ async def enrich_domain(
     settings: Settings,
     options: RunOptions,
     progress: ProgressFn | None = None,
+    finder: LinkedInFinder | None = None,
 ) -> DomainResult:
     """Run the full pipeline for one domain. Never raises."""
     domain = normalise_domain(raw_domain)
     started = time.perf_counter()
     usage = UsageTracker(model=settings.gemini_model)
     result = DomainResult(domain=domain, url=f"https://{domain}", status="failed")
+    rounds_run = 0  # survives the `finally` block, which rebuilds result.metrics
 
     def say(message: str) -> None:
         if progress:
@@ -230,54 +296,90 @@ async def enrich_domain(
         good = [home, *[p for p in fetched if p.ok and p.text]]
         say(f"retrieved {len(good)} page(s)")
 
-        corpus = build_corpus(
-            [(p.url, p.text) for p in good],
-            settings.max_chars_per_page,
-            settings.max_chars_total,
-        )
-        source_blob = "\n".join([p.html for p in good] + [p.text for p in good])
-        emails = find_emails(source_blob)
-        linkedins = find_linkedin_urls(source_blob)
-        contact_page = next(
-            (p.url for p in good if "contact" in p.url.lower()),
-            None,
-        )
-
         if client is None:
             result.status = "partial"
             result.errors.append("LLM disabled; only deterministic extraction ran")
             return result
 
-        say("extracting with Gemini")
-        raw_intel = await client.structured(
-            prompt=EXTRACTION_USER.format(
+        # --- the agent loop ------------------------------------------------ #
+        # Extract, look at what is missing, and if anything important is, go
+        # back for pages that would fill exactly those gaps. Most domains
+        # answer everything on the first round and never enter the second.
+        visited = {normalise(home_url), *(normalise(p.url) for p in fetched)}
+        intel: CompanyIntel | None = None
+
+        for round_number in range(1, settings.max_agent_rounds + 1):
+            rounds_run = round_number
+            intel, source_blob = await _extract_round(
+                client, domain, good, settings, usage, say, round_number
+            )
+            if intel is None:
+                result.status = "partial"
+                result.errors.append("LLM extraction returned no usable structured output")
+                return result
+
+            gaps = identify_gaps(intel)
+            if not gaps:
+                break
+            if round_number == settings.max_agent_rounds:
+                result.errors.append(f"still missing after {round_number} round(s): "
+                                     f"{summarise_gaps(gaps)}")
+                break
+            if len(result.pages) >= settings.max_pages_total:
+                result.errors.append("page budget reached; stopped looking")
+                break
+
+            # Only pages the heuristic does not actively reject. The prompt
+            # asks the model to return nothing rather than fetch a page that
+            # cannot hold the answer, but on a site with no team page it will
+            # reach for whatever is left -- vapi.ai's run picked /blog and
+            # /community, scored -8 and -4. Enforce it in code, not in prose.
+            unread = [
+                c for c in candidates if c.score > 0 and normalise(c.url) not in visited
+            ]
+            if not unread:
+                result.errors.append(f"no unread pages left to fill: {summarise_gaps(gaps)}")
+                break
+
+            budget = min(
+                settings.max_followup_pages, settings.max_pages_total - len(result.pages)
+            )
+            more, why = await select_followup_pages(
+                client,
                 domain=domain,
-                emails=", ".join(emails) or "none",
-                linkedins=", ".join(linkedins["profiles"]) or "none",
-                corpus=corpus,
-            ),
-            schema=LlmCompanyIntel,
-            system=EXTRACTION_SYSTEM.format(domain=domain),
-            usage=usage,
-        )
-        if raw_intel is None:
-            result.status = "partial"
-            result.errors.append("LLM extraction returned no usable structured output")
-            return result
+                gaps=gaps,
+                visited=[p.url for p in good],
+                candidates=unread,
+                max_pages=budget,
+                usage=usage,
+            )
+            if not more:
+                result.errors.append(f"{summarise_gaps(gaps)} not found; {why}")
+                break
 
-        intel = _build_intel(
-            raw_intel,
-            source_blob=source_blob,
-            known_emails=emails,
-            known_linkedins=linkedins["profiles"],
-            contact_page=contact_page,
-        )
+            say(f"round {round_number + 1}: {summarise_gaps(gaps)} missing - {why}")
+            extra = await session.fetch_many(context, more, settings.page_concurrency)
+            visited.update(normalise(p.url) for p in extra)
+            for page in extra:
+                result.pages.append(
+                    PageRecord(
+                        url=page.url,
+                        ok=page.ok,
+                        chars=len(page.text),
+                        note=page.error or ("; ".join(page.notes) or None),
+                    )
+                )
+            usable = [p for p in extra if p.ok and p.text]
+            if not usable:
+                result.errors.append("follow-up pages could not be read")
+                break
+            good.extend(usable)
 
-        if options.use_search and intel.leadership:
-            missing = [m for m in intel.leadership if not m.linkedin_url]
-            if missing:
-                say(f"searching LinkedIn for {len(missing)} person(s)")
-                await _fill_linkedin(missing, domain, settings, context)
+        missing = [m for m in intel.leadership if not m.linkedin_url]
+        if options.use_search and missing and finder is not None:
+            finder.bind(context)
+            say(f"searching LinkedIn for {len(missing)} person(s)")
+            await _fill_linkedin(missing, domain, finder)
 
         pages_ok = sum(1 for p in result.pages if p.ok)
         blended, objective = blended_confidence(intel, pages_ok, len(result.pages))
@@ -304,6 +406,7 @@ async def enrich_domain(
         result.metrics = RunMetrics(
             pages_fetched=sum(1 for p in result.pages if p.ok),
             pages_failed=sum(1 for p in result.pages if not p.ok),
+            agent_rounds=rounds_run,
             llm_calls=usage.calls,
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,
@@ -317,24 +420,31 @@ async def enrich_domain(
 
 
 async def _fill_linkedin(
-    members: list[TeamMember], domain: str, settings: Settings, context
+    members: list[TeamMember], domain: str, finder: LinkedInFinder
 ) -> None:
     """Look up profile URLs for team members missing one, in sequence.
 
     Sequential on purpose: parallel search requests are the fastest way to get
-    rate-limited, and this runs at most a handful of times per domain.
+    rate-limited, and this runs at most a handful of times per domain. The
+    finder is shared across the run, so a person looked up once -- or a
+    provider found to be blocked -- is not paid for again.
     """
-    finder = LinkedInFinder(settings, context)
     company = domain.split(".")[0]
     for member in members:
-        url = await finder.find(member.name, company)
-        if url:
-            try:
-                member.linkedin_url = url  # type: ignore[assignment]
-                TeamMember.model_validate(member.model_dump())
-                member.source = "search"
-            except ValidationError:
-                member.linkedin_url = None
+        lookup = await finder.find(member.name, company)
+        if lookup.status != "found" or not lookup.url:
+            member.source = (
+                "search_unavailable" if lookup.status == "unavailable" else "searched_not_found"
+            )
+            continue
+        try:
+            member.linkedin_url = lookup.url  # type: ignore[assignment]
+            TeamMember.model_validate(member.model_dump())
+            member.source = "search"
+        except ValidationError:
+            # The provider handed us something that is not a usable URL.
+            member.linkedin_url = None
+            member.source = "searched_not_found"
 
 
 def _write_partial(result: DomainResult, output_dir: Path) -> None:
@@ -358,18 +468,24 @@ async def run_domains(
 ) -> RunReport:
     """Enrich every domain, with bounded concurrency, and aggregate the totals."""
     semaphore = asyncio.Semaphore(max(1, settings.domain_concurrency))
+    # One finder for the whole run: its cache and its record of which providers
+    # are blocked are only worth keeping if they outlive a single domain.
+    finder = LinkedInFinder.build(settings) if options.use_search else None
 
     async with BrowserSession(settings, headless=headless) as session:
 
         async def worker(domain: str) -> DomainResult:
             async with semaphore:
-                return await enrich_domain(session, client, domain, settings, options, progress)
+                return await enrich_domain(
+                    session, client, domain, settings, options, progress, finder
+                )
 
         results = list(await asyncio.gather(*(worker(d) for d in domains)))
 
     totals = RunMetrics(
         pages_fetched=sum(r.metrics.pages_fetched for r in results),
         pages_failed=sum(r.metrics.pages_failed for r in results),
+        agent_rounds=sum(r.metrics.agent_rounds for r in results),
         llm_calls=sum(r.metrics.llm_calls for r in results),
         prompt_tokens=sum(r.metrics.prompt_tokens for r in results),
         completion_tokens=sum(r.metrics.completion_tokens for r in results),

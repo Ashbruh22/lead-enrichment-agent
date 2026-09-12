@@ -9,23 +9,24 @@ leadership with LinkedIn URLs, and a confidence score — as validated JSON.
 $ lead-agent --input domains.txt --out output.json --csv output.csv
 
   postman.com          fetching homepage
-  postman.com          selected 5/25 links - Selected About, Contact, Contact Sales and
-                       Careers pages to gather company, leadership and contact details.
+  postman.com          selected 5/25 links - About, Contact and Careers pages cover the
+                       company, its audience and its contact details.
   postman.com          retrieved 6 page(s)
   postman.com          extracting with Gemini
   postman.com          searching LinkedIn for 3 person(s)
   ...
+  vapi.ai              leadership missing - nothing left worth reading
 
                               Lead enrichment run
-  ┏━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━┓
-  ┃ Domain       ┃ Status ┃ Pages ┃ People ┃ Emails ┃ Conf. ┃ Tokens ┃  Cost $ ┃  Time ┃
-  ┡━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━┩
-  │ postman.com  │ ok     │   6/6 │      3 │      4 │  0.91 │  5,357 │ 0.01044 │ 23.9s │
-  │ supabase.com │ ok     │   5/5 │      1 │      5 │  0.87 │  5,408 │ 0.01050 │ 21.8s │
-  │ vapi.ai      │ ok     │   6/6 │      0 │      2 │  0.66 │  5,315 │ 0.01507 │ 21.4s │
-  ├──────────────┼────────┼───────┼────────┼────────┼───────┼────────┼─────────┼───────┤
-  │ TOTAL        │        │ 17/17 │        │        │       │ 16,080 │ 0.03601 │       │
-  └──────────────┴────────┴───────┴────────┴────────┴───────┴────────┴─────────┴───────┘
+  ┏━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━┓
+  ┃ Domain       ┃ Status ┃ Pages ┃ Rnds ┃ People ┃ Emails ┃ Conf. ┃ Tokens ┃  Cost $ ┃  Time ┃
+  ┡━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━┩
+  │ postman.com  │ ok     │   6/6 │    1 │      3 │      4 │  0.98 │  5,368 │ 0.00517 │ 36.5s │
+  │ supabase.com │ ok     │   6/6 │    1 │      3 │      5 │  0.95 │  6,233 │ 0.00577 │ 23.9s │
+  │ vapi.ai      │ ok     │   6/6 │    1 │      0 │      2 │  0.75 │  4,859 │ 0.00473 │ 48.4s │
+  ├──────────────┼────────┼───────┼──────┼────────┼────────┼───────┼────────┼─────────┼───────┤
+  │ TOTAL        │        │ 18/18 │      │        │        │       │ 16,460 │ 0.01567 │       │
+  └──────────────┴────────┴───────┴──────┴────────┴────────┴───────┴────────┴─────────┴───────┘
 ```
 
 ---
@@ -58,7 +59,7 @@ Then edit `.env`:
 |---|---|---|
 | `GEMINI_API_KEY` | **yes** | Free key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
 | `GEMINI_MODEL` | no | Defaults to `gemini-3.6-flash` |
-| `TAVILY_API_KEY` | no | Fallback search provider if the built-in browser search is rate-limited |
+| `TAVILY_API_KEY` | recommended | What makes LinkedIn discovery actually work. Free tier at [tavily.com](https://tavily.com). Without it the agent falls back to scraping Brave/DuckDuckGo, which get rate-limited quickly |
 
 The free Gemini tier is enough to run all three test domains many times over.
 
@@ -87,7 +88,8 @@ Or without installing the entry point: `python -m lead_agent --input domains.txt
 | `--out`, `--csv` | Output paths (JSON always; CSV optional) |
 | `--output-dir` | Per-domain JSON, written the instant each domain finishes (default `outputs/`) |
 | `--concurrency` | Domains processed in parallel (default 2) |
-| `--max-pages` | Subpages crawled per domain (default 5) |
+| `--max-pages` | Subpages crawled per domain, per round (default 5) |
+| `--max-rounds` | Assess-and-continue rounds per domain (default 3; `1` disables the loop) |
 | `--headful` | Show the Chromium window |
 | `--no-llm-nav` | Use heuristic link ranking instead of LLM page selection |
 | `--no-search` | Skip the external LinkedIn lookup |
@@ -121,11 +123,20 @@ domain
   ├─ 7. pipeline.py     LLM output is validated against the source text; anything
   │                     unverifiable is dropped.
   │
-  ├─ 8. search.py       People still missing a LinkedIn URL get looked up via a
-  │                     browser search, accepted only on a name match.
+  ├─ 8. search.py       People still missing a LinkedIn URL get looked up:
+  │                     Tavily's API first, browser search as fallback, accepted
+  │                     only on a name match. Cached across the whole run.
   │
-  └─ 9. scoring.py      Confidence = 0.35 × LLM self-score + 0.65 × measured completeness.
+  ├─ 9. gaps.py         What the extraction failed to find. If anything important
+  │                     is missing and there are unread links worth trying, the
+  │                     agent goes back to step 3 for pages targeting those gaps.
+  │
+  └─ 10. scoring.py     Confidence = 0.35 × LLM self-score + 0.65 × measured completeness.
 ```
+
+Steps 3-9 form a bounded loop: the second round is not planned in advance, it
+happens because the first round's *output* came up short. Rounds, follow-up
+pages and total pages are all capped, so it always terminates.
 
 ### Design decisions worth explaining
 
@@ -147,6 +158,15 @@ ICP, and attributing titles to names.
 `/company` wastes requests on 404s — vapi.ai has no `/about` page. Showing the
 model the links that exist and letting it choose means every fetch is a real
 URL, and the validation step means a hallucinated path costs nothing.
+
+**Search providers are ordered by how much they can be trusted.** An
+unauthenticated scrape of a search engine is unreliable by design — the engine
+is actively trying to stop you, and cleverness is just the rate limiter's next
+target. So Tavily's API goes first when a key is configured and scraping is the
+fallback, a provider that fails is retired for the whole run instead of being
+re-probed per person, and misses are cached as firmly as hits because failure is
+the common case. The name-match guard sits in the finder rather than in any
+provider, so every path is checked by the same code.
 
 **Confidence is not self-reported.** Models rate their own output optimistically
 and with little variance, so the final score blends the model's estimate (35%)
@@ -180,7 +200,7 @@ The script is built so that no single site can end a run.
 | Bare domain does not resolve | Automatically retried as `www.` |
 | Unparseable LLM output | Re-parsed from raw text, then degraded to a `partial` result |
 | Gemini 429 / 503 | Retried with exponential backoff, capped at 45s so it can outwait a per-minute free-tier quota |
-| Search engine blocks us | Engines are tried in order (Brave, then DuckDuckGo); one that returns a stub or challenge is dropped for the rest of the run rather than re-queried per person |
+| Search provider blocked or rate-limited | Providers are tried in order of reliability (Tavily API, then Brave, then DuckDuckGo); one that fails is retired for the rest of the run rather than re-queried per person, and misses are cached so a failure is never paid for twice |
 | Anything unforeseen | Per-domain error boundary → `status: "failed"` with the reason recorded |
 
 Results are written to `outputs/<domain>.json` the moment each domain finishes,
@@ -197,28 +217,31 @@ bounded.
 
 ```jsonc
 {
-  "generated_at": "2026-09-12T11:31:44.582991",
-  "model": "gemini-3.5-flash",
+  "generated_at": "2026-09-12T12:04:11.204853",
+  "model": "gemini-3.7-flash",
   "results": [
     {
       "domain": "postman.com",
       "url": "https://postman.com",
       "status": "ok",
       "intel": {
-        "company_overview": "Postman is a unified API platform for designing, testing, distributing, documenting, and monitoring APIs. It simplifies each step of the API lifecycle and streamlines collaboration to help teams create better APIs faster.",
+        "company_overview": "Postman is a unified API platform for designing, testing, distributing, documenting, and monitoring APIs. ...",
         "target_audience": "Developers and enterprise engineering teams building, testing, and managing APIs.",
         "contact_points": {
           "emails": ["info@postman.com", "info-jp@postman.com", "help@postman.com", "accommodations@postman.com"],
           "contact_page_url": "https://postman.com/company/contact-us"
         },
         "leadership": [
-          { "name": "Abhinav Asthana", "role": "CEO and co-founder", "linkedin_url": null, "source": "unknown" },
-          { "name": "Ankit Sobti",     "role": "Co-founder",         "linkedin_url": null, "source": "unknown" },
-          { "name": "Abhijit Kane",    "role": "Co-founder",         "linkedin_url": null, "source": "unknown" }
+          { "name": "Abhinav Asthana", "role": "CEO and co-founder",
+            "linkedin_url": "https://www.linkedin.com/in/abhinavasthana", "source": "search" },
+          { "name": "Ankit Sobti", "role": "Founder",
+            "linkedin_url": "https://www.linkedin.com/in/ankit-sobti", "source": "search" },
+          { "name": "Abhijit Kane", "role": "Founder",
+            "linkedin_url": "https://in.linkedin.com/in/abhijitkane", "source": "search" }
         ],
-        "data_confidence_score": 0.905,
+        "data_confidence_score": 0.982,
         "llm_self_score": 0.95,
-        "completeness_score": 0.88
+        "completeness_score": 1.0
       },
       "pages": [
         { "url": "https://postman.com", "ok": true, "chars": 770,
@@ -227,27 +250,27 @@ bounded.
       ],
       "errors": [],
       "metrics": {
-        "pages_fetched": 6, "pages_failed": 0, "llm_calls": 2,
-        "prompt_tokens": 4632, "completion_tokens": 725,
-        "total_tokens": 5357, "estimated_cost_usd": 0.010443,
-        "duration_seconds": 23.94
-      },
-      "scraped_at": "2026-09-12T11:31:07.918330"
+        "pages_fetched": 6, "pages_failed": 0, "agent_rounds": 1, "llm_calls": 2,
+        "prompt_tokens": 4998, "completion_tokens": 370,
+        "total_tokens": 5368, "estimated_cost_usd": 0.005136,
+        "duration_seconds": 36.49
+      }
     }
     // ... supabase.com, vapi.ai
   ],
-  "totals": { "pages_fetched": 17, "total_tokens": 16080, "estimated_cost_usd": 0.036008 }
+  "totals": { "pages_fetched": 18, "total_tokens": 16460, "estimated_cost_usd": 0.015666 }
 }
 ```
 
-The committed `output.json` and `output.csv` are the real artefacts of the run
-in the table above, generated with `gemini-3.5-flash` — the free-tier daily
-quota for the default `gemini-3.6-flash` was exhausted while testing, and
-`GEMINI_MODEL` exists precisely so the model is a one-line swap.
+`source` on each person records provenance: `website` when the URL was on the
+company's own site, `search` when it came from the external lookup,
+`searched_not_found` when we looked and no candidate passed the name match, and
+`search_unavailable` when every provider was blocked.
 
-`source` on each team member records provenance: `website` when the LinkedIn URL
-was on the company's own site, `search` when it came from the external lookup,
-`unknown` when no profile was found.
+The committed `output.json` and `output.csv` are the real artefacts of the run
+in the table above, generated with `gemini-3.7-flash` — the free-tier quota for
+the default `gemini-3.6-flash` was exhausted during development, and
+`GEMINI_MODEL` exists precisely so the model is a one-line swap.
 
 ---
 
@@ -285,15 +308,14 @@ src/lead_agent/
 
 ## Known limitations
 
-- LinkedIn profile discovery is best-effort and the weakest link. LinkedIn
-  blocks automated profile access, so URLs come from search results and are
-  validated by name match rather than by opening the profile — a slug match is
-  strong evidence, not proof. Unauthenticated search scraping is also rate
-  limited: DuckDuckGo now answers automated queries with an error stub, and
-  Brave starts serving result-free pages under sustained querying. When that
-  happens the field is left `null` with `source: "unknown"` rather than filled
-  with a guess, which is why the committed sample has names and titles but no
-  profile URLs. Set `TAVILY_API_KEY` for a rate-limit-free path.
+- LinkedIn blocks automated profile access, so profile URLs come from search
+  results and are validated by name match rather than by opening the profile. A
+  slug match is strong evidence, not proof. Without a `TAVILY_API_KEY` the agent
+  falls back to scraping Brave and DuckDuckGo, which rate-limit quickly; when no
+  provider can confirm a profile the field stays `null` and `source` records
+  whether we looked and failed (`searched_not_found`) or could not look at all
+  (`search_unavailable`), rather than filling in a guess.
+
 - Sites behind an aggressive WAF may yield only the homepage. The run reports
   this as `partial` with the reason recorded rather than inventing data.
 - Only English-language content is prompted for.

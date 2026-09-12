@@ -97,7 +97,8 @@ class TestBuildIntel:
         )
         assert intel.leadership[0].name == "Marcus Oyelaran"
         assert intel.leadership[0].linkedin_url is None
-        assert intel.leadership[0].source == "unknown"
+        # Not yet searched: _build_intel runs before the external lookup.
+        assert intel.leadership[0].source == "not_searched"
 
     def test_skips_nameless_entries(self) -> None:
         intel = build(llm_payload(leadership=[LlmTeamMember(name="   ", role="CEO")]))

@@ -3,38 +3,51 @@
 Most company sites name their founders but never link their LinkedIn profiles,
 so this closes the most common gap in the output.
 
-It reuses the Playwright browser already running for the crawl, so it needs no
-extra API key -- which is the point. Engines are tried in order and an engine
-that stops cooperating is dropped for the rest of the run, because a blocked
-engine costs ten seconds per person and returns nothing. A Tavily path is
-available behind ``TAVILY_API_KEY`` as a final fallback.
+The layout reflects one fact: **unauthenticated search scraping is unreliable
+by design.** Brave and DuckDuckGo are actively trying to stop automated
+queries, and any cleverness added here is a rate limiter's next target. So
+providers are ordered by how much we can trust them -- Tavily's API first when
+a key is configured, browser scraping only as a fallback -- and a provider that
+stops cooperating is dropped for the whole run rather than re-probed per
+person.
 
-The important safeguard is :func:`profile_matches_name`: a search engine will
-happily return *a* LinkedIn profile for any query, so a result is only accepted
-when the profile slug actually corresponds to the person's name. Without that
-check this feature would quietly attach strangers to your leads.
+Two safeguards matter more than the providers themselves:
+
+* :func:`profile_matches_name` -- a search engine will happily return *a*
+  LinkedIn profile for any query. A result is accepted only when the profile
+  slug corresponds to the person's name. Without this the feature would quietly
+  attach strangers to your leads, which is worse than finding nothing. The
+  guard lives in the finder, never in a provider, so every path is checked by
+  the same code.
+* Negative caching -- "we looked for this person and found nothing" is cached
+  as firmly as a hit. Failure is the common case and re-paying for it per
+  domain is what made the original implementation slow.
 """
 
 from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass, field
+from typing import Literal, Protocol
 from urllib.parse import quote_plus, unquote, urlparse
 
 import httpx
 from playwright.async_api import BrowserContext
 from playwright.async_api import Error as PlaywrightError
 
-from .config import USER_AGENT, Settings
+from .config import Settings
 from .extract import LINKEDIN_RE, page_title
 
 log = logging.getLogger(__name__)
 
-# Tried in order. Brave is first because it is the one that still serves a real
-# result page to an automated browser; DuckDuckGo's endpoints now answer most
-# automated queries with a short error stub, so they sit behind it as backups
-# rather than being removed -- which engine is blocked varies by network.
-SEARCH_ENGINES: tuple[tuple[str, str], ...] = (
+_NAME_NOISE = {"dr", "mr", "ms", "mrs", "jr", "sr", "ii", "iii", "phd", "md"}
+
+# Browser engines, tried in this order. Brave is first because it is the one
+# that still serves a real result page to an automated browser; DuckDuckGo's
+# endpoints now answer most automated queries with a short error stub, so they
+# sit behind it as backups -- which engine is blocked varies by network.
+BROWSER_ENGINES: tuple[tuple[str, str], ...] = (
     ("brave", "https://search.brave.com/search?q={query}"),
     ("duckduckgo", "https://html.duckduckgo.com/html/?q={query}"),
     ("duckduckgo-lite", "https://lite.duckduckgo.com/lite/?q={query}"),
@@ -49,7 +62,12 @@ _BLOCK_TITLE_RE = re.compile(
     re.IGNORECASE,
 )
 
-_NAME_NOISE = {"dr", "mr", "ms", "mrs", "jr", "sr", "ii", "iii", "phd", "md"}
+TAVILY_ENDPOINT = "https://api.tavily.com/search"
+
+
+# --------------------------------------------------------------------------- #
+# Name matching
+# --------------------------------------------------------------------------- #
 
 
 def name_tokens(name: str) -> list[str]:
@@ -77,16 +95,6 @@ def profile_matches_name(url: str, name: str) -> bool:
     return len(tokens) < 2 or tokens[0] in slug
 
 
-def _first_matching_profile(html: str, name: str) -> str | None:
-    for match in LINKEDIN_RE.finditer(html):
-        if match.group(1).lower() != "in":
-            continue
-        url = unquote(match.group(0)).rstrip("/.,)\"'").replace("http://", "https://")
-        if profile_matches_name(url, name):
-            return url
-    return None
-
-
 def looks_blocked(html: str) -> bool:
     """True if a search response is a challenge or error stub rather than results.
 
@@ -106,62 +114,109 @@ def looks_blocked(html: str) -> bool:
     return bool(_BLOCK_TITLE_RE.search(page_title(html)))
 
 
-class LinkedInFinder:
-    """Looks up missing LinkedIn profile URLs.
+def profile_urls_in(html: str) -> list[str]:
+    """Every ``linkedin.com/in/`` URL in a blob, normalised and deduplicated."""
+    found: dict[str, None] = {}
+    for match in LINKEDIN_RE.finditer(html):
+        if match.group(1).lower() != "in":
+            continue
+        url = unquote(match.group(0)).rstrip("/.,)\"'").replace("http://", "https://")
+        found.setdefault(url, None)
+    return list(found)
 
-    One instance per domain. Engines that return a block page are dropped for
-    the lifetime of the instance, so a blocked engine is paid for once rather
-    than once per person.
+
+# --------------------------------------------------------------------------- #
+# Providers
+# --------------------------------------------------------------------------- #
+
+
+class SearchProvider(Protocol):
+    """A way of turning a query into candidate LinkedIn profile URLs.
+
+    ``profile_urls`` returns ``None`` to mean *the provider itself failed* --
+    blocked, rate limited, misconfigured -- which retires it for the run. An
+    empty list means the provider worked and genuinely found nothing, which
+    says nothing about its health.
     """
 
-    def __init__(self, settings: Settings, context: BrowserContext | None) -> None:
-        self.settings = settings
-        self.context = context
-        self._blocked: set[str] = set()
+    name: str
 
-    @property
-    def _live_engines(self) -> list[tuple[str, str]]:
-        return [(n, t) for n, t in SEARCH_ENGINES if n not in self._blocked]
+    async def profile_urls(self, query: str) -> list[str] | None: ...
 
-    async def find(self, name: str, company: str) -> str | None:
-        """Best-effort profile URL for ``name`` at ``company``; ``None`` if unsure."""
-        if not name.strip():
+
+@dataclass
+class TavilyProvider:
+    """Tavily's search API. The reliable path, and the reason to configure a key."""
+
+    api_key: str
+    name: str = "tavily"
+    max_results: int = 10
+    timeout: float = 20.0
+
+    async def profile_urls(self, query: str) -> list[str] | None:
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    TAVILY_ENDPOINT,
+                    headers={"Authorization": f"Bearer {self.api_key}"},
+                    json={
+                        "query": query,
+                        "max_results": self.max_results,
+                        "include_domains": ["linkedin.com"],
+                    },
+                )
+        except Exception as exc:
+            log.debug("tavily request failed: %s", exc)
             return None
-        query = f'"{name}" {company} linkedin'
 
-        for engine, template in self._live_engines:
-            url = await self._search_browser(engine, template, query, name)
-            if url:
-                return url
+        if response.status_code != 200:
+            log.info("tavily returned HTTP %s; retiring it for this run", response.status_code)
+            return None
 
-        if self.settings.tavily_api_key:
-            return await self._search_tavily(query, name)
-        return None
+        try:
+            results = response.json().get("results", [])
+        except ValueError:
+            return None
 
-    async def _search_browser(
-        self, engine: str, template: str, query: str, name: str
-    ) -> str | None:
+        # Tavily returns posts and articles alongside profiles; keep only the
+        # profile URLs and let the finder's name guard judge them.
+        urls: list[str] = []
+        for item in results:
+            url = (item.get("url") or "").rstrip("/")
+            if "/in/" in url:
+                urls.append(url.replace("http://", "https://"))
+        return urls
+
+
+@dataclass
+class BrowserProvider:
+    """A search engine driven through the Playwright browser already running."""
+
+    name: str
+    url_template: str
+    context: BrowserContext | None = None
+    timeout_ms: int = 15_000
+
+    async def profile_urls(self, query: str) -> list[str] | None:
         if self.context is None:
             return None
         page = None
         try:
             page = await self.context.new_page()
             await page.goto(
-                template.format(query=quote_plus(query)),
+                self.url_template.format(query=quote_plus(query)),
                 wait_until="domcontentloaded",
-                timeout=15_000,
+                timeout=self.timeout_ms,
             )
             html = await page.content()
             if looks_blocked(html):
-                log.info("%s is not serving results; dropping it for this run", engine)
-                self._blocked.add(engine)
+                log.info("%s is not serving results; retiring it for this run", self.name)
                 return None
-            return _first_matching_profile(html, name)
+            return profile_urls_in(html)
         except PlaywrightError as exc:
             # A timeout or navigation failure is the engine refusing us just as
             # surely as a challenge page is.
-            log.debug("%s search failed for %r: %s", engine, name, exc)
-            self._blocked.add(engine)
+            log.debug("%s search failed: %s", self.name, exc)
             return None
         finally:
             if page is not None:
@@ -170,25 +225,98 @@ class LinkedInFinder:
                 except PlaywrightError:
                     pass
 
-    async def _search_tavily(self, query: str, name: str) -> str | None:
-        try:
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                response = await client.post(
-                    "https://api.tavily.com/search",
-                    json={
-                        "api_key": self.settings.tavily_api_key,
-                        "query": query,
-                        "max_results": 5,
-                        "include_domains": ["linkedin.com"],
-                    },
-                    headers={"User-Agent": USER_AGENT},
+
+# --------------------------------------------------------------------------- #
+# The finder
+# --------------------------------------------------------------------------- #
+
+LookupStatus = Literal["found", "not_found", "unavailable"]
+
+
+@dataclass(frozen=True)
+class Lookup:
+    """Outcome of one profile search, including why it came back empty."""
+
+    url: str | None = None
+    status: LookupStatus = "not_found"
+    provider: str | None = None
+
+
+@dataclass
+class LinkedInFinder:
+    """Looks up missing LinkedIn profile URLs across a whole run.
+
+    One instance per run, not per domain: the cache and the set of retired
+    providers are only useful if they outlive a single site. :meth:`bind` swaps
+    in each domain's browser context as the crawl moves on.
+    """
+
+    settings: Settings
+    providers: list[SearchProvider] = field(default_factory=list)
+    _cache: dict[tuple[str, str], Lookup] = field(default_factory=dict, repr=False)
+    _retired: set[str] = field(default_factory=set, repr=False)
+
+    @classmethod
+    def build(cls, settings: Settings, context: BrowserContext | None = None) -> LinkedInFinder:
+        """Providers in order of trustworthiness: API first, scraping second."""
+        providers: list[SearchProvider] = []
+        if settings.tavily_api_key:
+            providers.append(
+                TavilyProvider(
+                    api_key=settings.tavily_api_key,
+                    max_results=settings.tavily_max_results,
                 )
-            if response.status_code != 200:
-                return None
-            for item in response.json().get("results", []):
-                url = (item.get("url") or "").rstrip("/")
-                if "/in/" in url and profile_matches_name(url, name):
-                    return url
-        except Exception as exc:
-            log.debug("tavily search failed for %r: %s", name, exc)
-        return None
+            )
+        providers.extend(
+            BrowserProvider(name=name, url_template=template, context=context)
+            for name, template in BROWSER_ENGINES
+        )
+        return cls(settings=settings, providers=providers)
+
+    def bind(self, context: BrowserContext | None) -> None:
+        """Point the browser-backed providers at the current domain's context."""
+        for provider in self.providers:
+            if isinstance(provider, BrowserProvider):
+                provider.context = context
+
+    @property
+    def live_providers(self) -> list[SearchProvider]:
+        return [p for p in self.providers if p.name not in self._retired]
+
+    async def find(self, name: str, company: str) -> Lookup:
+        """Best-effort profile for ``name`` at ``company``.
+
+        Returns a :class:`Lookup` rather than a bare URL so the caller can tell
+        "searched and found nothing" from "had nothing to search with" -- a
+        distinction that ends up in the output as provenance.
+        """
+        if not name.strip():
+            return Lookup(status="not_found")
+
+        key = (name.strip().lower(), company.strip().lower())
+        if key in self._cache:
+            return self._cache[key]
+
+        query = f'"{name}" {company} linkedin'
+        result = await self._search(query, name)
+        self._cache[key] = result  # negatives cached too; failure is the common case
+        return result
+
+    async def _search(self, query: str, name: str) -> Lookup:
+        providers = self.live_providers
+        if not providers:
+            return Lookup(status="unavailable")
+
+        for provider in providers:
+            urls = await provider.profile_urls(query)
+            if urls is None:
+                self._retired.add(provider.name)
+                continue
+            for url in urls:
+                if profile_matches_name(url, name):
+                    return Lookup(url=url, status="found", provider=provider.name)
+
+        # Every provider either retired or came back empty. If none survive,
+        # the lookup was never really performed and should not be reported as
+        # a negative result.
+        return Lookup(status="not_found" if self.live_providers else "unavailable")

@@ -83,10 +83,25 @@ class SelectedPages(BaseModel):
 
 
 class TeamMember(BaseModel):
+    """One person, plus how we came by their profile URL -- or why we did not.
+
+    ``source`` deliberately distinguishes the three empty cases. A reviewer
+    reading the output should be able to tell a feature that was switched off
+    from one that ran and found nothing, and both from one that could not run
+    because every search provider was blocked. Collapsing them all into
+    "unknown" hides whether the lookup works at all.
+    """
+
     name: str
     role: str | None = None
     linkedin_url: HttpUrl | None = None
-    source: Literal["website", "search", "unknown"] = "website"
+    source: Literal[
+        "website",           # the URL was on the company's own site
+        "search",            # found by external search, name-matched
+        "searched_not_found",  # we looked and there was no confident match
+        "search_unavailable",  # every provider was blocked or unconfigured
+        "not_searched",      # lookup disabled for this run
+    ] = "website"
 
 
 class ContactPoints(BaseModel):
@@ -132,6 +147,8 @@ class PageRecord(BaseModel):
 class RunMetrics(BaseModel):
     pages_fetched: int = 0
     pages_failed: int = 0
+    agent_rounds: int = 0
+    """Assess-and-continue rounds run for this domain; 1 means no follow-up."""
     llm_calls: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0

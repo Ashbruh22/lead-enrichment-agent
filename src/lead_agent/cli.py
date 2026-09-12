@@ -49,6 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--concurrency", type=int, help="Domains to process in parallel.")
     parser.add_argument("--max-pages", type=int, help="Max subpages to crawl per domain.")
     parser.add_argument(
+        "--max-rounds",
+        type=int,
+        help="Assess-and-continue rounds per domain (1 disables the follow-up loop).",
+    )
+    parser.add_argument(
         "--headful", action="store_true", help="Show the browser window (useful for demos)."
     )
     parser.add_argument(
@@ -89,6 +94,8 @@ def apply_overrides(settings: Settings, args: argparse.Namespace) -> Settings:
         settings.domain_concurrency = args.concurrency
     if args.max_pages:
         settings.max_pages_per_domain = args.max_pages
+    if args.max_rounds:
+        settings.max_agent_rounds = args.max_rounds
     if args.no_robots:
         settings.respect_robots = False
     return settings
@@ -99,6 +106,7 @@ def render_summary(report: RunReport) -> None:
     table.add_column("Domain")
     table.add_column("Status")
     table.add_column("Pages", justify="right")
+    table.add_column("Rnds", justify="right")
     table.add_column("People", justify="right")
     table.add_column("Emails", justify="right")
     table.add_column("Conf.", justify="right")
@@ -114,6 +122,7 @@ def render_summary(report: RunReport) -> None:
             result.domain,
             f"[{STATUS_STYLE.get(status, 'white')}]{status}[/]",
             f"{m.pages_fetched}/{m.pages_fetched + m.pages_failed}",
+            str(m.agent_rounds),
             str(len(intel.leadership)) if intel else "-",
             str(len(intel.contact_points.emails)) if intel else "-",
             f"{intel.data_confidence_score:.2f}" if intel else "-",
@@ -128,6 +137,7 @@ def render_summary(report: RunReport) -> None:
         "[bold]TOTAL[/]",
         "",
         f"{totals.pages_fetched}/{totals.pages_fetched + totals.pages_failed}",
+        "",
         "",
         "",
         "",

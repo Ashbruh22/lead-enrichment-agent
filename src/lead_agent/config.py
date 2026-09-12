@@ -16,7 +16,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # is the number that matters when this is scaled up.
 PRICING: dict[str, tuple[float, float]] = {
     # model: (input $/1M, output $/1M)
-    "gemini-3.6-flash": (0.75, 3.75),  # promotional; rises to 1.50/7.50 on 2027-01-01
+    # Promotional through 2026-12-31; all three rise to 1.50/7.50 on 2027-01-01.
+    "gemini-3.8-flash": (0.75, 3.75),
+    "gemini-3.7-flash": (0.75, 3.75),
+    "gemini-3.6-flash": (0.75, 3.75),
     "gemini-3.5-flash": (1.50, 9.00),
     "gemini-3-flash": (0.50, 3.00),
     "gemini-3.1-flash-lite": (0.25, 1.50),
@@ -42,6 +45,14 @@ class Settings(BaseSettings):
     gemini_api_key: str = Field(default="")
     gemini_model: str = Field(default="gemini-3.6-flash")
     tavily_api_key: str = Field(default="")
+    tavily_max_results: int = 10
+    """Results per Tavily query.
+
+    Ten rather than five on measured evidence, not taste: at five, Tavily
+    returned no profile at all for three of Postman's and Supabase's founders;
+    at ten it found every one. A query costs the same either way, so the only
+    thing a smaller page buys is misses.
+    """
 
     # --- crawling -------------------------------------------------------- #
     page_timeout_ms: int = 25_000
@@ -49,6 +60,19 @@ class Settings(BaseSettings):
     """How long to wait for network to go quiet after DOM load (SPA content)."""
     max_pages_per_domain: int = 5
     max_link_candidates: int = 25
+
+    # --- agent loop ------------------------------------------------------ #
+    max_agent_rounds: int = 3
+    """How many assess-and-continue rounds one domain may run.
+
+    Round 1 is the initial crawl and extraction. Each further round happens
+    only if the extraction came back with something important missing and
+    there are still unread links worth trying, so most domains stop at 1.
+    """
+    max_followup_pages: int = 3
+    """Pages a single follow-up round may request."""
+    max_pages_total: int = 12
+    """Hard ceiling on pages per domain across all rounds."""
     page_concurrency: int = 3
     domain_concurrency: int = 2
     request_delay_seconds: float = 0.5

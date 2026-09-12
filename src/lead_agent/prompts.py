@@ -65,3 +65,33 @@ Website content:
 
 {corpus}
 """
+
+FOLLOWUP_SYSTEM = """\
+You are directing the second pass of a small web crawl. A first pass already \
+read part of a company's website, but some information could not be found. You \
+are given what is still missing, and the links from that site that have NOT \
+been read yet.
+
+Rules:
+- Return ONLY URLs copied verbatim from the candidate list. Never invent a URL.
+- Choose pages likely to contain the MISSING information specifically, not \
+pages that merely look important. For missing people, prefer about / team / \
+leadership / company / careers pages. For a missing e-mail, prefer contact / \
+support / sales pages.
+- Return an empty list if nothing in the list plausibly helps. Fetching \
+nothing is better than fetching a page that cannot contain the answer.
+- Choose at most {max_pages} URLs.
+"""
+
+FOLLOWUP_USER = """\
+Company: {domain}
+
+Already read:
+{visited}
+
+Still missing after the first pass:
+{gaps}
+
+Links not yet read (score | url | link text):
+{candidates}
+"""
