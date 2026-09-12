@@ -99,13 +99,36 @@ def _squash(text: str) -> str:
     return "\n".join(line.strip() for line in text.splitlines()).strip()
 
 
+_JSON_ESCAPE_RE = re.compile(r"\\u([0-9a-fA-F]{4})")
+
+
+def decode_escapes(source: str) -> str:
+    r"""Resolve ``\uXXXX`` sequences before pattern matching.
+
+    Modern frameworks embed serialised HTML inside ``<script>`` payloads, where
+    ``>`` is written ``>``. Left alone, ``>info@postman.com`` satisfies
+    the e-mail pattern and harvests ``u003einfo@postman.com`` -- a plausible
+    looking address that does not exist. Decoding first restores the tag
+    boundary so the word boundary lands where it should.
+
+    Lone surrogates are left escaped; they cannot be a character and ``chr``
+    would produce a string that later blows up on encode.
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        codepoint = int(match.group(1), 16)
+        return match.group(0) if 0xD800 <= codepoint <= 0xDFFF else chr(codepoint)
+
+    return _JSON_ESCAPE_RE.sub(replace, source)
+
+
 def find_emails(*sources: str) -> list[str]:
     """Public e-mail addresses found across the given HTML/text blobs."""
     found: dict[str, None] = {}
     for source in sources:
         if not source:
             continue
-        for raw in EMAIL_RE.findall(source):
+        for raw in EMAIL_RE.findall(decode_escapes(source)):
             candidate = unquote(raw).strip(".,;:").lower()
             if _is_plausible_email(candidate):
                 found.setdefault(candidate, None)
@@ -131,7 +154,7 @@ def find_linkedin_urls(*sources: str) -> dict[str, list[str]]:
     for source in sources:
         if not source:
             continue
-        for match in LINKEDIN_RE.finditer(source):
+        for match in LINKEDIN_RE.finditer(decode_escapes(source)):
             url = match.group(0).rstrip("/.,)\"'").replace("http://", "https://")
             target = profiles if match.group(1).lower() == "in" else companies
             target.setdefault(url, None)

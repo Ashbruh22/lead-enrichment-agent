@@ -76,8 +76,12 @@ def configure_logging(verbose: bool) -> None:
         handlers=[RichHandler(console=console, rich_tracebacks=True, show_path=False)],
     )
     # These are chatty at DEBUG and drown out our own output.
-    for noisy in ("httpx", "httpcore", "urllib3", "google_genai", "trafilatura"):
+    for noisy in ("httpx", "httpcore", "urllib3", "trafilatura"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
+    # google_genai warns about automatic function calling on every single call.
+    # We pass no tools, so the warning does not apply to us; real API failures
+    # surface as exceptions and are reported by the pipeline instead.
+    logging.getLogger("google_genai").setLevel(logging.ERROR)
 
 
 def apply_overrides(settings: Settings, args: argparse.Namespace) -> Settings:

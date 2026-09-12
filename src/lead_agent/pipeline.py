@@ -257,7 +257,7 @@ async def enrich_domain(
                 corpus=corpus,
             ),
             schema=LlmCompanyIntel,
-            system=EXTRACTION_SYSTEM,
+            system=EXTRACTION_SYSTEM.format(domain=domain),
             usage=usage,
         )
         if raw_intel is None:

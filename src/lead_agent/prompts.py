@@ -38,8 +38,14 @@ actually does.
 - target_audience is one sentence naming the ideal customer profile.
 - emails: copy generic/public addresses (contact@, sales@, support@, hello@, \
 press@) verbatim. Do not construct addresses from a person's name.
-- leadership: only people actually named in the content, with the title as \
-written. Include a linkedin_url ONLY if that exact URL appears in the content.
+- leadership: ONLY people who work at {domain} itself -- founders, executives \
+and named employees -- with the title exactly as written. Marketing pages are \
+full of people who do NOT belong here: customers giving testimonials, partners, \
+investors, advisors and conference speakers. If a person's title names a \
+different organisation, or the quote is praising the product rather than \
+speaking for the company, leave them out. Prefer founders and executives over \
+junior staff. Include a linkedin_url ONLY if that exact URL appears in the \
+content.
 - data_confidence_score: judge how complete and unambiguous the content was. \
 Use 0.9+ only when overview, audience, contacts and named people were all \
 clearly present; use below 0.4 when the content was thin or mostly marketing \

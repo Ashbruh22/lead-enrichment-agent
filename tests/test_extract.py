@@ -3,6 +3,7 @@
 from lead_agent.extract import (
     build_corpus,
     clean_html,
+    decode_escapes,
     find_emails,
     find_linkedin_urls,
     page_title,
@@ -107,3 +108,26 @@ class TestBuildCorpus:
 
     def test_empty_input_is_empty_output(self) -> None:
         assert build_corpus([], 100, 1000) == ""
+
+
+class TestDecodeEscapes:
+    r"""Escaped markup in <script> payloads used to corrupt harvested contacts."""
+
+    def test_resolves_escaped_markup(self) -> None:
+        assert decode_escapes(r"\u003ca\u003e") == "<a>"
+
+    def test_leaves_plain_text_alone(self) -> None:
+        assert decode_escapes("contact@example.org") == "contact@example.org"
+
+    def test_keeps_lone_surrogates_escaped(self) -> None:
+        # chr() would build a string that later blows up on encode.
+        assert decode_escapes(r"\ud800") == r"\ud800"
+
+    def test_escaped_bracket_no_longer_pollutes_the_local_part(self) -> None:
+        # The exact shape seen on postman.com, which yielded u003einfo@postman.com.
+        source = r'\u003ca href="mailto:info@postman.com"\u003einfo@postman.com\u003c/a\u003e'
+        assert find_emails(source) == ["info@postman.com"]
+
+    def test_escaped_markup_does_not_truncate_linkedin_urls(self) -> None:
+        source = r'\u003ca href="https://www.linkedin.com/in/jane-doe"\u003eJane\u003c/a\u003e'
+        assert find_linkedin_urls(source)["profiles"] == ["https://www.linkedin.com/in/jane-doe"]

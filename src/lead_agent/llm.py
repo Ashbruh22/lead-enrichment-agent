@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 
 from google import genai
@@ -64,6 +65,34 @@ class UsageTracker:
         self.errors.extend(other.errors)
 
 
+def minimal_thinking(model: str) -> types.ThinkingConfig | None:
+    """The least deliberation this model family will accept.
+
+    These are extraction tasks over text we already supply, not reasoning
+    problems, and thinking tokens bill at the output rate -- so we ask for as
+    little as the API allows. Gemini 2.x takes a numeric ``thinking_budget``;
+    Gemini 3 replaced it with a coarse ``thinking_level`` and rejects the old
+    field with a 400. Version-shaped names are matched explicitly, and anything
+    unrecognised (``gemini-flash-latest``) gets no thinking config at all rather
+    than a guess -- :meth:`GeminiClient.structured` also degrades on a 400, so a
+    wrong guess here costs a wasted call rather than the run.
+    """
+    match = re.match(r"(?:models/)?gemini-(\d+)", model)
+    if match is None:
+        return None
+    return (
+        types.ThinkingConfig(thinking_level="low")
+        if int(match.group(1)) >= 3
+        else types.ThinkingConfig(thinking_budget=0)
+    )
+
+
+def _is_invalid_argument(exc: BaseException) -> bool:
+    """A 400 from the API -- usually an option this model does not support."""
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    return code == 400 or "INVALID_ARGUMENT" in str(exc)
+
+
 def _is_retryable(exc: BaseException) -> bool:
     """Rate limits, overload and transient 5xx are worth another try."""
     code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
@@ -90,6 +119,7 @@ class GeminiClient:
         self.settings = settings
         self.model = settings.gemini_model
         self._client = genai.Client(api_key=settings.gemini_api_key)
+        self._thinking = minimal_thinking(self.model)
 
     async def structured(
         self,
@@ -101,24 +131,40 @@ class GeminiClient:
         temperature: float = 0.1,
     ) -> BaseModel | None:
         """One schema-constrained call. Returns ``None`` rather than raising."""
-        config = types.GenerateContentConfig(
-            system_instruction=system,
-            response_mime_type="application/json",
-            response_schema=schema,
-            temperature=temperature,
-            # Thinking bills as output tokens and adds seconds per call. These
-            # are extraction tasks over supplied text, not reasoning problems.
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
-        )
+
+        def build(thinking: types.ThinkingConfig | None) -> types.GenerateContentConfig:
+            return types.GenerateContentConfig(
+                system_instruction=system,
+                response_mime_type="application/json",
+                response_schema=schema,
+                temperature=temperature,
+                thinking_config=thinking,
+            )
 
         try:
-            response = await self._call_with_retries(prompt, config)
+            response = await self._call_with_retries(prompt, build(self._thinking))
         except Exception as exc:
-            message = f"LLM call failed: {type(exc).__name__}: {str(exc)[:200]}"
-            log.warning(message)
-            usage.errors.append(message)
-            usage.calls += 1
-            return None
+            # A 400 while a thinking config is set is almost always the model
+            # refusing that knob (the 2.x/3.x split). Drop it, retry once, and
+            # remember, so an unknown model costs one wasted call per run.
+            retryable = self._thinking is not None and _is_invalid_argument(exc)
+            if not retryable:
+                message = f"LLM call failed: {type(exc).__name__}: {str(exc)[:200]}"
+                log.warning(message)
+                usage.errors.append(message)
+                usage.calls += 1
+                return None
+
+            log.info("%s rejected the thinking config; retrying without it", self.model)
+            self._thinking = None
+            try:
+                response = await self._call_with_retries(prompt, build(None))
+            except Exception as retry_exc:
+                message = f"LLM call failed: {type(retry_exc).__name__}: {str(retry_exc)[:200]}"
+                log.warning(message)
+                usage.errors.append(message)
+                usage.calls += 1
+                return None
 
         usage.record(response.usage_metadata)
         parsed = self._coerce(response, schema)
@@ -129,7 +175,10 @@ class GeminiClient:
     async def _call_with_retries(self, prompt: str, config: types.GenerateContentConfig):
         async for attempt in AsyncRetrying(
             stop=stop_after_attempt(self.settings.llm_attempts),
-            wait=wait_exponential(multiplier=2, min=2, max=30),
+            # Capped at 45s rather than 30s: a free-tier 429 is a per-minute
+            # quota, and a backoff that tops out below that window just burns
+            # the remaining attempts inside the same minute and gives up.
+            wait=wait_exponential(multiplier=3, min=3, max=45),
             retry=retry_if_exception(_is_retryable),
             reraise=True,
         ):

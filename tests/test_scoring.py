@@ -2,7 +2,7 @@
 
 from lead_agent.models import CompanyIntel, ContactPoints, TeamMember
 from lead_agent.scoring import blended_confidence, completeness
-from lead_agent.search import name_tokens, profile_matches_name
+from lead_agent.search import looks_blocked, name_tokens, profile_matches_name
 
 
 def make_intel(
@@ -112,3 +112,31 @@ class TestProfileMatchesName:
 
     def test_handles_url_encoded_slugs(self) -> None:
         assert profile_matches_name("https://linkedin.com/in/dana%2Dwhitfield", "Dana Whitfield")
+
+
+class TestLooksBlocked:
+    """A blocked engine must be recognised, or it costs ~10s per person."""
+
+    def test_short_error_stub_is_blocked(self) -> None:
+        # The real DuckDuckGo refusal: a 273-byte body with no error wording.
+        assert looks_blocked("<html><body>If this persists, please email us.</body></html>")
+
+    def test_challenge_title_is_blocked_even_when_long(self) -> None:
+        html = "<html><head><title>Unusual traffic detected</title></head><body>"
+        assert looks_blocked(html + "x" * 5_000 + "</body></html>")
+
+    def test_a_real_result_page_is_not_blocked(self) -> None:
+        html = "<html><head><title>jane doe - Brave Search</title></head><body>"
+        assert not looks_blocked(html + "result " * 1_000 + "</body></html>")
+
+    def test_challenge_words_in_the_body_do_not_block(self) -> None:
+        # Regression: Brave ships an i18n table containing "Switch to
+        # traditional captcha". Matching the body marked every successful
+        # search as blocked and silently disabled the whole feature.
+        html = (
+            "<html><head><title>abhinav asthana - Brave Search</title></head><body>"
+            + "x" * 5_000
+            + '{"Switch to traditional captcha":"Switch to traditional CAPTCHA"}'
+            + "</body></html>"
+        )
+        assert not looks_blocked(html)

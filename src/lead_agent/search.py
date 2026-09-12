@@ -3,9 +3,11 @@
 Most company sites name their founders but never link their LinkedIn profiles,
 so this closes the most common gap in the output.
 
-It reuses the Playwright browser already running for the crawl and queries
-DuckDuckGo's HTML endpoint -- no extra API key, which is the point. A Tavily
-path is available behind ``TAVILY_API_KEY`` for when DuckDuckGo rate-limits.
+It reuses the Playwright browser already running for the crawl, so it needs no
+extra API key -- which is the point. Engines are tried in order and an engine
+that stops cooperating is dropped for the rest of the run, because a blocked
+engine costs ten seconds per person and returns nothing. A Tavily path is
+available behind ``TAVILY_API_KEY`` as a final fallback.
 
 The important safeguard is :func:`profile_matches_name`: a search engine will
 happily return *a* LinkedIn profile for any query, so a result is only accepted
@@ -24,11 +26,29 @@ from playwright.async_api import BrowserContext
 from playwright.async_api import Error as PlaywrightError
 
 from .config import USER_AGENT, Settings
-from .extract import LINKEDIN_RE
+from .extract import LINKEDIN_RE, page_title
 
 log = logging.getLogger(__name__)
 
-_DDG_HTML = "https://html.duckduckgo.com/html/?q={query}"
+# Tried in order. Brave is first because it is the one that still serves a real
+# result page to an automated browser; DuckDuckGo's endpoints now answer most
+# automated queries with a short error stub, so they sit behind it as backups
+# rather than being removed -- which engine is blocked varies by network.
+SEARCH_ENGINES: tuple[tuple[str, str], ...] = (
+    ("brave", "https://search.brave.com/search?q={query}"),
+    ("duckduckgo", "https://html.duckduckgo.com/html/?q={query}"),
+    ("duckduckgo-lite", "https://lite.duckduckgo.com/lite/?q={query}"),
+)
+
+# A real result page is tens of kilobytes. Anything this small is an error stub
+# or a challenge page, whatever it claims in the body.
+_MIN_RESULT_PAGE_CHARS = 2_000
+_BLOCK_TITLE_RE = re.compile(
+    r"unusual traffic|anomaly|are you a robot|captcha|access denied|"
+    r"just a moment|verify you are human|too many requests",
+    re.IGNORECASE,
+)
+
 _NAME_NOISE = {"dr", "mr", "ms", "mrs", "jr", "sr", "ii", "iii", "phd", "md"}
 
 
@@ -67,46 +87,81 @@ def _first_matching_profile(html: str, name: str) -> str | None:
     return None
 
 
+def looks_blocked(html: str) -> bool:
+    """True if a search response is a challenge or error stub rather than results.
+
+    Two signals, and only two. Size catches the error stubs, which is how
+    DuckDuckGo now refuses automated queries -- a couple of hundred bytes with
+    no explanation in the body.
+
+    Challenge wording is matched against the ``<title>`` alone, never the body.
+    A search results page is a quarter-megabyte of bundled JavaScript that
+    routinely mentions these words in passing: Brave ships a translation table
+    containing "Switch to traditional captcha", which is emphatically not the
+    same as being served one. Scanning the body for "captcha" marked every
+    successful Brave search as blocked.
+    """
+    if len(html) < _MIN_RESULT_PAGE_CHARS:
+        return True
+    return bool(_BLOCK_TITLE_RE.search(page_title(html)))
+
+
 class LinkedInFinder:
-    """Looks up missing LinkedIn profile URLs."""
+    """Looks up missing LinkedIn profile URLs.
+
+    One instance per domain. Engines that return a block page are dropped for
+    the lifetime of the instance, so a blocked engine is paid for once rather
+    than once per person.
+    """
 
     def __init__(self, settings: Settings, context: BrowserContext | None) -> None:
         self.settings = settings
         self.context = context
-        self._exhausted = False  # set once the search route stops cooperating
+        self._blocked: set[str] = set()
+
+    @property
+    def _live_engines(self) -> list[tuple[str, str]]:
+        return [(n, t) for n, t in SEARCH_ENGINES if n not in self._blocked]
 
     async def find(self, name: str, company: str) -> str | None:
         """Best-effort profile URL for ``name`` at ``company``; ``None`` if unsure."""
-        if self._exhausted or not name.strip():
+        if not name.strip():
             return None
         query = f'"{name}" {company} linkedin'
 
-        url = await self._search_browser(query, name)
-        if url:
-            return url
+        for engine, template in self._live_engines:
+            url = await self._search_browser(engine, template, query, name)
+            if url:
+                return url
+
         if self.settings.tavily_api_key:
             return await self._search_tavily(query, name)
         return None
 
-    async def _search_browser(self, query: str, name: str) -> str | None:
+    async def _search_browser(
+        self, engine: str, template: str, query: str, name: str
+    ) -> str | None:
         if self.context is None:
             return None
         page = None
         try:
             page = await self.context.new_page()
             await page.goto(
-                _DDG_HTML.format(query=quote_plus(query)),
+                template.format(query=quote_plus(query)),
                 wait_until="domcontentloaded",
                 timeout=15_000,
             )
             html = await page.content()
-            if "anomaly" in html.lower() or "unusual traffic" in html.lower():
-                log.info("Search engine rate-limited; disabling LinkedIn lookup for this run")
-                self._exhausted = True
+            if looks_blocked(html):
+                log.info("%s is not serving results; dropping it for this run", engine)
+                self._blocked.add(engine)
                 return None
             return _first_matching_profile(html, name)
         except PlaywrightError as exc:
-            log.debug("browser search failed for %r: %s", name, exc)
+            # A timeout or navigation failure is the engine refusing us just as
+            # surely as a challenge page is.
+            log.debug("%s search failed for %r: %s", engine, name, exc)
+            self._blocked.add(engine)
             return None
         finally:
             if page is not None:
