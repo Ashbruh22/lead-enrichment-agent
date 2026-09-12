@@ -1,20 +1,18 @@
 {
-  "generated_at": "2026-09-12T11:56:14.997553",
-  "model": "gemini-3.7-flash",
+  "generated_at": "2026-09-12T15:21:58.775229",
+  "model": "gemini-3.6-flash",
   "results": [
     {
       "domain": "postman.com",
       "url": "https://postman.com",
       "status": "ok",
       "intel": {
-        "company_overview": "Postman is an API platform that simplifies each step of the API lifecycle and streamlines collaboration to help teams build and manage APIs. The platform allows engineers and organizations to develop, test, manage, and distribute APIs and services at enterprise scale.",
-        "target_audience": "Developers, engineers, and enterprise organizations building, testing, and managing APIs.",
+        "company_overview": "Postman is an API platform that enables software engineers and enterprise organizations to develop, test, manage, and distribute APIs. The platform simplifies each step of the API lifecycle while providing contract-first governance, collaboration features, and security controls.",
+        "target_audience": "Individual developers, software engineering teams, and enterprise organizations building and managing APIs.",
         "contact_points": {
           "emails": [
             "info@postman.com",
-            "info-jp@postman.com",
-            "help@postman.com",
-            "accommodations@postman.com"
+            "info-jp@postman.com"
           ],
           "contact_page_url": "https://postman.com/company/contact-us"
         },
@@ -27,13 +25,13 @@
           },
           {
             "name": "Ankit Sobti",
-            "role": "Founder",
+            "role": "co-founder",
             "linkedin_url": "https://www.linkedin.com/in/ankit-sobti",
             "source": "search"
           },
           {
             "name": "Abhijit Kane",
-            "role": "Founder",
+            "role": "co-founder",
             "linkedin_url": "https://in.linkedin.com/in/abhijitkane",
             "source": "search"
           }
@@ -62,45 +60,39 @@
           "note": "network never went idle; captured DOM as-is"
         },
         {
-          "url": "https://postman.com/company/contact-sales",
-          "ok": true,
-          "chars": 2685,
-          "note": "network never went idle; captured DOM as-is"
-        },
-        {
           "url": "https://postman.com/product",
           "ok": true,
           "chars": 2247,
           "note": "network never went idle; captured DOM as-is"
         },
         {
-          "url": "https://postman.com/company/careers",
+          "url": "https://postman.com/pricing",
           "ok": true,
-          "chars": 5154,
+          "chars": 15027,
           "note": "network never went idle; captured DOM as-is"
         }
       ],
       "errors": [],
       "metrics": {
-        "pages_fetched": 6,
+        "pages_fetched": 5,
         "pages_failed": 0,
         "agent_rounds": 1,
         "llm_calls": 2,
-        "prompt_tokens": 4988,
-        "completion_tokens": 380,
-        "total_tokens": 5368,
-        "estimated_cost_usd": 0.005166,
-        "duration_seconds": 36.49
+        "prompt_tokens": 5509,
+        "completion_tokens": 349,
+        "total_tokens": 5858,
+        "estimated_cost_usd": 0.005441,
+        "duration_seconds": 27.53
       },
-      "scraped_at": "2026-09-12T11:54:26.130106"
+      "scraped_at": "2026-09-12T15:21:18.037788"
     },
     {
       "domain": "supabase.com",
       "url": "https://supabase.com",
       "status": "ok",
       "intel": {
-        "company_overview": "Supabase is an open-source Postgres development platform designed for developers to build and scale applications. It provides a dedicated Postgres database alongside built-in authentication, realtime data, storage, RESTful APIs, edge functions, and vector embeddings.",
-        "target_audience": "Developers and software engineering teams looking for a scalable, open-source backend development platform powered by Postgres.",
+        "company_overview": "Supabase provides an open source backend platform built around a Postgres database. Its suite of tools includes authentication, data APIs, edge functions, realtime data, storage, and vector embeddings.",
+        "target_audience": "Developers and engineering teams building web and mobile applications.",
         "contact_points": {
           "emails": [
             "legal@supabase.com",
@@ -113,6 +105,12 @@
         },
         "leadership": [
           {
+            "name": "Tracy Lane",
+            "role": "General Counsel",
+            "linkedin_url": "https://www.linkedin.com/in/tracy-lane-5baa7023",
+            "source": "search"
+          },
+          {
             "name": "Paul Copplestone",
             "role": null,
             "linkedin_url": "https://www.linkedin.com/in/paulcopplestone",
@@ -123,16 +121,10 @@
             "role": null,
             "linkedin_url": "https://uk.linkedin.com/in/ant-wilson-46179937",
             "source": "search"
-          },
-          {
-            "name": "Tracy Lane",
-            "role": "General Counsel",
-            "linkedin_url": "https://www.linkedin.com/in/tracy-lane-5baa7023",
-            "source": "search"
           }
         ],
-        "data_confidence_score": 0.948,
-        "llm_self_score": 0.85,
+        "data_confidence_score": 0.93,
+        "llm_self_score": 0.8,
         "completeness_score": 1.0
       },
       "pages": [
@@ -146,19 +138,13 @@
           "url": "https://supabase.com/company",
           "ok": true,
           "chars": 2792,
-          "note": "network never went idle; captured DOM as-is"
+          "note": null
         },
         {
           "url": "https://supabase.com/contact-us",
           "ok": true,
           "chars": 1641,
-          "note": "network never went idle; captured DOM as-is"
-        },
-        {
-          "url": "https://supabase.com/pricing",
-          "ok": true,
-          "chars": 15193,
-          "note": "network never went idle; captured DOM as-is"
+          "note": null
         },
         {
           "url": "https://supabase.com/contact/sales",
@@ -167,33 +153,33 @@
           "note": null
         },
         {
-          "url": "https://supabase.com/careers",
+          "url": "https://supabase.com/pricing",
           "ok": true,
-          "chars": 2364,
+          "chars": 15193,
           "note": null
         }
       ],
       "errors": [],
       "metrics": {
-        "pages_fetched": 6,
+        "pages_fetched": 5,
         "pages_failed": 0,
         "agent_rounds": 1,
         "llm_calls": 2,
-        "prompt_tokens": 5868,
-        "completion_tokens": 365,
-        "total_tokens": 6233,
-        "estimated_cost_usd": 0.00577,
-        "duration_seconds": 23.87
+        "prompt_tokens": 5320,
+        "completion_tokens": 331,
+        "total_tokens": 5651,
+        "estimated_cost_usd": 0.005231,
+        "duration_seconds": 22.64
       },
-      "scraped_at": "2026-09-12T11:55:02.625247"
+      "scraped_at": "2026-09-12T15:21:18.037788"
     },
     {
       "domain": "vapi.ai",
       "url": "https://vapi.ai",
       "status": "ok",
       "intel": {
-        "company_overview": "Vapi provides a developer-first platform and real-time audio infrastructure for building, testing, and deploying enterprise voice AI agents. The platform handles orchestration, low-latency telephony, model integrations, and conversation guardrails to help organizations automate calls at scale.",
-        "target_audience": "Developers and enterprise teams seeking to build, deploy, and scale real-time conversational voice AI agents.",
+        "company_overview": "Vapi provides a unified voice AI platform and real-time audio infrastructure for building, testing, and deploying enterprise-ready voice agents. Its technology handles orchestration, conversation flows, latency, and telephony integrations to support scalable automated phone and web interactions.",
+        "target_audience": "Developers and enterprise teams building, testing, and scaling voice AI applications.",
         "contact_points": {
           "emails": [
             "support@vapi.ai",
@@ -210,8 +196,8 @@
         {
           "url": "https://vapi.ai",
           "ok": true,
-          "chars": 2130,
-          "note": null
+          "chars": 2115,
+          "note": "network never went idle; captured DOM as-is"
         },
         {
           "url": "https://vapi.ai/sales",
@@ -226,50 +212,50 @@
           "note": null
         },
         {
-          "url": "https://vapi.ai/customers",
-          "ok": true,
-          "chars": 1839,
-          "note": "network never went idle; captured DOM as-is"
-        },
-        {
           "url": "https://vapi.ai/careers",
           "ok": true,
           "chars": 2010,
           "note": "network never went idle; captured DOM as-is"
         },
         {
-          "url": "https://vapi.ai/platform",
+          "url": "https://vapi.ai/customers",
           "ok": true,
-          "chars": 3220,
+          "chars": 1839,
+          "note": "network never went idle; captured DOM as-is"
+        },
+        {
+          "url": "https://vapi.ai/pricing",
+          "ok": true,
+          "chars": 2578,
           "note": "network never went idle; captured DOM as-is"
         }
       ],
       "errors": [
-        "leadership not found; nothing left worth reading"
+        "no unread pages left to fill: leadership"
       ],
       "metrics": {
         "pages_fetched": 6,
         "pages_failed": 0,
         "agent_rounds": 1,
-        "llm_calls": 3,
-        "prompt_tokens": 4497,
-        "completion_tokens": 362,
-        "total_tokens": 4859,
-        "estimated_cost_usd": 0.00473,
-        "duration_seconds": 48.35
+        "llm_calls": 2,
+        "prompt_tokens": 4357,
+        "completion_tokens": 234,
+        "total_tokens": 4591,
+        "estimated_cost_usd": 0.004145,
+        "duration_seconds": 17.99
       },
-      "scraped_at": "2026-09-12T11:55:26.497361"
+      "scraped_at": "2026-09-12T15:21:40.685237"
     }
   ],
   "totals": {
-    "pages_fetched": 18,
+    "pages_fetched": 16,
     "pages_failed": 0,
     "agent_rounds": 3,
-    "llm_calls": 7,
-    "prompt_tokens": 15353,
-    "completion_tokens": 1107,
-    "total_tokens": 16460,
-    "estimated_cost_usd": 0.015666,
-    "duration_seconds": 108.71
+    "llm_calls": 6,
+    "prompt_tokens": 15186,
+    "completion_tokens": 914,
+    "total_tokens": 16100,
+    "estimated_cost_usd": 0.014817,
+    "duration_seconds": 68.16
   }
 }

@@ -438,8 +438,12 @@ async def _fill_linkedin(
             )
             continue
         try:
-            member.linkedin_url = lookup.url  # type: ignore[assignment]
-            TeamMember.model_validate(member.model_dump())
+            # Validate through the model so the field holds a real HttpUrl.
+            # Assigning the raw string passes the type checker but leaves a str
+            # in an HttpUrl field, and Pydantic then warns on every dump.
+            member.linkedin_url = TeamMember(
+                name=member.name, role=member.role, linkedin_url=lookup.url
+            ).linkedin_url
             member.source = "search"
         except ValidationError:
             # The provider handed us something that is not a usable URL.

@@ -1,7 +1,17 @@
 """Tests for domain normalisation and the LLM-output validation gate."""
 
-from lead_agent.models import LlmCompanyIntel, LlmTeamMember
-from lead_agent.pipeline import _build_intel, _verify_against_source, normalise_domain
+import warnings
+
+from pydantic import HttpUrl
+
+from lead_agent.models import LlmCompanyIntel, LlmTeamMember, TeamMember
+from lead_agent.pipeline import (
+    _build_intel,
+    _fill_linkedin,
+    _verify_against_source,
+    normalise_domain,
+)
+from lead_agent.search import Lookup
 
 SOURCE = """
 Contact us at hello@acmerobotics.com or sales@acmerobotics.com.
@@ -115,3 +125,55 @@ class TestBuildIntel:
     def test_rejects_a_malformed_contact_page_url(self) -> None:
         intel = build(llm_payload(), contact_page="not a url")
         assert intel.contact_points.contact_page_url is None
+
+
+class TestFillLinkedIn:
+    """The lookup must leave a real HttpUrl in the field, not a bare string.
+
+    Assigning the raw string satisfies the type checker but leaves a str in an
+    HttpUrl field, and Pydantic then emits a serializer warning on every dump --
+    which floods the terminal on any run that finds a profile.
+    """
+
+    class StubFinder:
+        def __init__(self, lookup: Lookup) -> None:
+            self.lookup = lookup
+
+        async def find(self, name: str, company: str) -> Lookup:
+            return self.lookup
+
+    async def test_a_hit_is_stored_as_a_real_url(self) -> None:
+        member = TeamMember(name="Jane Doe", role="CEO", source="not_searched")
+        found = Lookup(url="https://www.linkedin.com/in/jane-doe", status="found", provider="p")
+
+        await _fill_linkedin([member], "acme.com", self.StubFinder(found))
+
+        assert isinstance(member.linkedin_url, HttpUrl)
+        assert member.source == "search"
+
+    async def test_serialising_a_found_member_emits_no_warnings(self) -> None:
+        member = TeamMember(name="Jane Doe", source="not_searched")
+        found = Lookup(url="https://www.linkedin.com/in/jane-doe", status="found", provider="p")
+        await _fill_linkedin([member], "acme.com", self.StubFinder(found))
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            member.model_dump_json()
+
+    async def test_a_miss_is_recorded_as_searched_not_found(self) -> None:
+        member = TeamMember(name="Jane Doe", source="not_searched")
+        await _fill_linkedin([member], "acme.com", self.StubFinder(Lookup(status="not_found")))
+        assert member.linkedin_url is None
+        assert member.source == "searched_not_found"
+
+    async def test_no_providers_is_recorded_as_unavailable(self) -> None:
+        member = TeamMember(name="Jane Doe", source="not_searched")
+        await _fill_linkedin([member], "acme.com", self.StubFinder(Lookup(status="unavailable")))
+        assert member.source == "search_unavailable"
+
+    async def test_an_unusable_url_does_not_become_a_profile(self) -> None:
+        member = TeamMember(name="Jane Doe", source="not_searched")
+        broken = Lookup(url="not-a-url", status="found", provider="p")
+        await _fill_linkedin([member], "acme.com", self.StubFinder(broken))
+        assert member.linkedin_url is None
+        assert member.source == "searched_not_found"

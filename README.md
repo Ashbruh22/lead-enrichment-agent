@@ -9,23 +9,24 @@ leadership with LinkedIn URLs, and a confidence score — as validated JSON.
 $ lead-agent --input domains.txt --out output.json --csv output.csv
 
   postman.com          fetching homepage
-  postman.com          selected 5/25 links - About, Contact and Careers pages cover the
-                       company, its audience and its contact details.
-  postman.com          retrieved 6 page(s)
+  postman.com          selected 4/25 links - Selected key company overview, contact, product
+                       and pricing pages to learn about Postman's offerings, target audience,
+                       leadership, and contact details.
+  postman.com          retrieved 5 page(s)
   postman.com          extracting with Gemini
   postman.com          searching LinkedIn for 3 person(s)
   ...
-  vapi.ai              leadership missing - nothing left worth reading
+  vapi.ai: no unread pages left to fill: leadership
 
-                              Lead enrichment run
+                                     Lead enrichment run
   ┏━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━┓
   ┃ Domain       ┃ Status ┃ Pages ┃ Rnds ┃ People ┃ Emails ┃ Conf. ┃ Tokens ┃  Cost $ ┃  Time ┃
   ┡━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━┩
-  │ postman.com  │ ok     │   6/6 │    1 │      3 │      4 │  0.98 │  5,368 │ 0.00517 │ 36.5s │
-  │ supabase.com │ ok     │   6/6 │    1 │      3 │      5 │  0.95 │  6,233 │ 0.00577 │ 23.9s │
-  │ vapi.ai      │ ok     │   6/6 │    1 │      0 │      2 │  0.75 │  4,859 │ 0.00473 │ 48.4s │
+  │ postman.com  │ ok     │   5/5 │    1 │      3 │      2 │  0.98 │  5,858 │ 0.00544 │ 27.5s │
+  │ supabase.com │ ok     │   5/5 │    1 │      3 │      5 │  0.93 │  5,651 │ 0.00523 │ 22.6s │
+  │ vapi.ai      │ ok     │   6/6 │    1 │      0 │      2 │  0.75 │  4,591 │ 0.00415 │ 18.0s │
   ├──────────────┼────────┼───────┼──────┼────────┼────────┼───────┼────────┼─────────┼───────┤
-  │ TOTAL        │        │ 18/18 │      │        │        │       │ 16,460 │ 0.01567 │       │
+  │ TOTAL        │        │ 16/16 │      │        │        │       │ 16,100 │ 0.01482 │       │
   └──────────────┴────────┴───────┴──────┴────────┴────────┴───────┴────────┴─────────┴───────┘
 ```
 
@@ -217,8 +218,8 @@ bounded.
 
 ```jsonc
 {
-  "generated_at": "2026-09-12T12:04:11.204853",
-  "model": "gemini-3.7-flash",
+  "generated_at": "2026-09-12T15:21:58.775229",
+  "model": "gemini-3.6-flash",
   "results": [
     {
       "domain": "postman.com",
@@ -228,15 +229,15 @@ bounded.
         "company_overview": "Postman is a unified API platform for designing, testing, distributing, documenting, and monitoring APIs. ...",
         "target_audience": "Developers and enterprise engineering teams building, testing, and managing APIs.",
         "contact_points": {
-          "emails": ["info@postman.com", "info-jp@postman.com", "help@postman.com", "accommodations@postman.com"],
+          "emails": ["info@postman.com", "info-jp@postman.com"],
           "contact_page_url": "https://postman.com/company/contact-us"
         },
         "leadership": [
           { "name": "Abhinav Asthana", "role": "CEO and co-founder",
             "linkedin_url": "https://www.linkedin.com/in/abhinavasthana", "source": "search" },
-          { "name": "Ankit Sobti", "role": "Founder",
+          { "name": "Ankit Sobti", "role": "co-founder",
             "linkedin_url": "https://www.linkedin.com/in/ankit-sobti", "source": "search" },
-          { "name": "Abhijit Kane", "role": "Founder",
+          { "name": "Abhijit Kane", "role": "co-founder",
             "linkedin_url": "https://in.linkedin.com/in/abhijitkane", "source": "search" }
         ],
         "data_confidence_score": 0.982,
@@ -246,19 +247,20 @@ bounded.
       "pages": [
         { "url": "https://postman.com", "ok": true, "chars": 770,
           "note": "network never went idle; captured DOM as-is" }
-        // ... 5 more
+        // ... 4 more
       ],
       "errors": [],
       "metrics": {
-        "pages_fetched": 6, "pages_failed": 0, "agent_rounds": 1, "llm_calls": 2,
-        "prompt_tokens": 4998, "completion_tokens": 370,
-        "total_tokens": 5368, "estimated_cost_usd": 0.005136,
-        "duration_seconds": 36.49
-      }
+        "pages_fetched": 5, "pages_failed": 0, "agent_rounds": 1, "llm_calls": 2,
+        "prompt_tokens": 5509, "completion_tokens": 349,
+        "total_tokens": 5858, "estimated_cost_usd": 0.005441,
+        "duration_seconds": 27.53
+      },
+      "scraped_at": "2026-09-12T15:21:18.037788"
     }
     // ... supabase.com, vapi.ai
   ],
-  "totals": { "pages_fetched": 18, "total_tokens": 16460, "estimated_cost_usd": 0.015666 }
+  "totals": { "pages_fetched": 16, "total_tokens": 16100, "estimated_cost_usd": 0.014817 }
 }
 ```
 
@@ -268,9 +270,7 @@ company's own site, `search` when it came from the external lookup,
 `search_unavailable` when every provider was blocked.
 
 The committed `output.json` and `output.csv` are the real artefacts of the run
-in the table above, generated with `gemini-3.7-flash` — the free-tier quota for
-the default `gemini-3.6-flash` was exhausted during development, and
-`GEMINI_MODEL` exists precisely so the model is a one-line swap.
+in the table above, on the default model with a `TAVILY_API_KEY` configured.
 
 ---
 
