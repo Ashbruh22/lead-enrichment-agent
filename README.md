@@ -139,7 +139,7 @@ Steps 3-9 form a bounded loop: the second round is not planned in advance, it
 happens because the first round's *output* came up short. Rounds, follow-up
 pages and total pages are all capped, so it always terminates.
 
-### Design decisions worth explaining
+### Design decisions
 
 **The LLM never sees raw HTML.** Pages go through trafilatura (with a manual
 strip-and-markdown fallback for marketing homepages, which trafilatura tends to
